@@ -2,10 +2,17 @@ from settings import Settings as _Settings
 import csv
 from tkinter import *
 import tkinter.font as tkfont
+
+from debug_utils import (
+    configure_logging,
+    get_logger,
+    log_class_methods,
+    safe_repr,
+)
 ########## Global Variables ##################
 global settings_file
 
-settings_file = '/home/pi/Desktop/Spectrometer/settings/settings.csv'
+settings_file = '/home/pho512/Desktop/Spectrometer/settings/settings.csv'
 
 
 
@@ -13,6 +20,9 @@ class Num_Pad:
     def __init__(self, parent, button_number):
         global number_save
         global settings_file
+        configure_logging()
+        self.logger = get_logger(f"{__name__}.Num_Pad")
+        self.logger.debug("Initializing Num_Pad with parent=%s button_number=%s", safe_repr(parent), button_number)
         self.settings_file = settings_file
         self.numpad = parent
         #number pad attributes
@@ -27,6 +37,7 @@ class Num_Pad:
         self.numpad.grid_rowconfigure((0,1,2,3,4), weight = 1)
        
         def button_click(number):
+            self.logger.debug("Button clicked: %s", number)
             global current
             current = num.get() # save current entry value
             num.set('') # erase entry
@@ -34,16 +45,19 @@ class Num_Pad:
             num.set(current) # rewrite entry with additional values 
     
         def num_pad_delete():
+            self.logger.debug("Clearing current entry")
             num.set('') # erase current entry
 
         def backspace():
             global current
             current = current[:-1] # Remove last digit
             num.set(current)
+            self.logger.debug("Backspace applied; current=%s", num.get())
 
         def num_pad_save(button_number):
             global number_save
             try:
+                self.logger.debug("Saving value for button %s", button_number)
                 settings_open = open(self.settings_file, 'r')
                 csv_reader = csv.reader(settings_open, delimiter=',')
                 settings = list(csv_reader)
@@ -67,11 +81,13 @@ class Num_Pad:
                     csv_writer.writerows(settings)
 
                 self.numpad.destroy()
-                
-                
+                self.logger.debug("Number pad value saved and window closed")
+
+
 
             # if value or type of returned value isnt an int or float then raise error
             except ValueError or TypeError:
+                self.logger.exception("Invalid numeric input provided")
                 error_top = Toplevel(self.numpad)
                 message = Label(error_top, text = "Input must be a valid integer or float", font = tkfont.Font(family = "Helvetica", weight = "bold", size = 15), wraplength = 300)
                 message.grid(row = 0, column = 0, padx = 10)
@@ -125,6 +141,14 @@ class Num_Pad:
         btn[9].configure(command = lambda: button_click(0))
         btn[10].configure(command = num_pad_delete)
         btn[11].configure(command = lambda: num_pad_save(button_number))
+
+
+log_class_methods(
+    Num_Pad,
+    exclude={"__init__"},
+    logger_name=f"{__name__}.Num_Pad",
+    log_result=False,
+)
 
         
         

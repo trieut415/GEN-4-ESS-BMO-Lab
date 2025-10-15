@@ -24,14 +24,22 @@ import RPi.GPIO as GPIO
 import spidev
 from smbus import SMBus
 
+from debug_utils import (
+    SerialDebugWrapper,
+    configure_logging,
+    get_logger,
+    log_class_methods,
+    safe_repr,
+)
+
 ################# Global Variables ############################
 global settings_file
 global acquire_file
 global path
 
-settings_file = '/home/pi/Desktop/Spectrometer/settings/settings.csv'
-acquire_file = '/home/pi/Desktop/Spectrometer/settings/acquire_file.csv'
-path = '/home/pi/Desktop/Spectrometer/'
+settings_file = '/home/pho512/Desktop/Spectrometer/settings/settings.csv'
+acquire_file = '/home/pho512/Desktop/Spectrometer/settings/acquire_file.csv'
+path = '/home/pho512/Desktop/Spectrometer/'
 #################################################################
 
 
@@ -40,12 +48,20 @@ class functions:
         global settings_file
         global acquire_file
         global ESS_module
+        configure_logging()
         self.parent = parent # whatever parent 
+        self.logger = get_logger(f"{__name__}.functions")
+        self.logger.debug(
+            "Initializing functions with parent=%s canvas=%s figure=%s",
+            safe_repr(parent),
+            safe_repr(_canvas),
+            safe_repr(figure),
+        )
         self.save_file = None # initalize file for saving data
         self.scan_file = None #initialize Scan File for saving scan data
         self.scan_number = 1 # ID for saving to csv
         self.reference_number = 1 # ref ID for saving to csv
-        self.exp_folder = '/home/pi/Desktop/Spectrometer' # experiment folder used for saving
+        self.exp_folder = '/home/pho512/Desktop/Spectrometer' # experiment folder used for saving
         self.df = None # data frame array used for storing and plotting data
         self.df_scan = None
         self.serial_check = False #variable for flagging serial connection
@@ -74,28 +90,58 @@ class functions:
         # these are two possible port names for the arduino attachment
         port = "/dev/ttyUSB0"
         port2 = "/dev/ttyUSB1"
-        
-        try:
-            self.ser = serial.Serial(port, baudrate = 115200, timeout = 5)
-        except:
-            self.ser = serial.Serial(port2, baudrate = 115200, timeout =5)
+        serial_candidates = [port, port2]
+        serial_exception = None
+        self.ser = None
+        for candidate in serial_candidates:
+            try:
+                self.logger.debug("Attempting to open serial port %s", candidate)
+                self.ser = serial.Serial(candidate, baudrate = 115200, timeout = 5)
+                self.logger.info("Serial port opened: %s", self.ser)
+                break
+            except Exception as exc:
+                serial_exception = exc
+                self.logger.warning("Failed to open serial port %s: %s", candidate, exc)
+        if self.ser is None:
+            self.logger.error("Unable to open any serial port from candidates %s", serial_candidates)
+            if serial_exception is not None:
+                raise serial_exception
+            raise RuntimeError("Serial port initialization failed")
+        self.ser = SerialDebugWrapper(self.ser, logger=self.logger, name="functions.ser")
+        self.logger.debug("Serial debug wrapper attached to %s", self.ser)
         
         ### set up SPI on the RPi to allow for data transfer to external devices
         self.spi = spidev.SpiDev()
-        self.spi.open(0,0)
+        try:
+            self.spi.open(0,0)
+            self.logger.debug("SPI bus opened on (0,0)")
+        except Exception as exc:
+            self.logger.exception("Failed to open SPI bus: %s", exc)
+            raise
         self.spi.max_speed_hz = 12000
         self.SPI = True
         
         # set up I2C for digitalPot
-        self.i2c = SMBus(1)
+        try:
+            self.i2c = SMBus(1)
+            self.logger.debug("I2C bus initialized on channel 1")
+        except Exception as exc:
+            self.logger.exception("Failed to initialize I2C bus: %s", exc)
+            raise
         
     
         # two pseudo reads to initalize the spectrometer
-        
-        self.ser.write(b"read\n")
-        blahdata = self.ser.read(576)
-        self.ser.write(b"read\n")
-        blahdata = self.ser.read(576)
+        self.logger.debug("Performing spectrometer warm-up reads")
+        try:
+            self.ser.write(b"read\n")
+            warmup_1 = self.ser.read(576)
+            self.logger.debug("Warm-up read 1 length: %s", len(warmup_1))
+            self.ser.write(b"read\n")
+            warmup_2 = self.ser.read(576)
+            self.logger.debug("Warm-up read 2 length: %s", len(warmup_2))
+        except Exception as exc:
+            self.logger.exception("Warm-up communication with spectrometer failed: %s", exc)
+            raise
         
         
         # intialize attributes for handling data and files
@@ -656,7 +702,7 @@ class functions:
             
     def OpenFile(self):
         scan_message = None    
-        save_file = askopenfilename(initialdir="/home/pi/Desktop/Spectrometer",
+        save_file = askopenfilename(initialdir="/home/pho512/Desktop/Spectrometer",
                                     filetypes =(("csv file", "*.csv"),("All Files","*.*")),
                                     title = "Choose a file.")
         #try:
@@ -977,3 +1023,11 @@ class functions:
             # after all data is taken save to sequence csv
             self.fig.canvas.draw()
         return seq_message
+
+
+log_class_methods(
+    functions,
+    exclude={"__init__"},
+    logger_name=f"{__name__}.functions",
+    log_result=False,
+)

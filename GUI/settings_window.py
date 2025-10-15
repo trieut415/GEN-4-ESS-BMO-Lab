@@ -5,6 +5,15 @@ import csv
 import os
 import numpy as np
 
+from debug_utils import (
+    SerialDebugWrapper,
+    configure_logging,
+    get_logger,
+    log_class_methods,
+    safe_repr,
+    summarize_bytes,
+)
+
 # module connect functionality 
 from tkinter import *
 import ESS_GUI_module_0
@@ -27,12 +36,15 @@ from time import sleep
 from subprocess import check_output
 
 ########## global variables ######################
-settings_file = '/home/pi/Desktop/Spectrometer/settings/settings.csv'
+settings_file = '/home/pho512/Desktop/Spectrometer/settings/settings.csv'
 
 
 class settings_popup_window:
     def __init__(self, parent, master):
         global settings_file
+        configure_logging()
+        self.logger = get_logger(f"{__name__}.settings_popup_window")
+        self.logger.debug("Initializing settings popup with parent=%s master=%s", safe_repr(parent), safe_repr(master))
         self.master = master
         self.settings_popup = parent
         self.settings_file = settings_file
@@ -48,19 +60,37 @@ class settings_popup_window:
         # get ip adress of raspberry Pi for VNC connection
         
     def module_connect(self):
-
-        port = "/dev/ttyUSB0"
-        port2 = "/dev/ttyUSB1"
-        try:
-            ser = serial.Serial(port, baudrate = 115200, timeout = 3)
-        except:
-            ser = serial.Serial(port2, baudrate = 115200, timeout =3)
+        self.logger.debug("module_connect invoked")
+        port_candidates = ["/dev/ttyUSB0", "/dev/ttyUSB1"]
+        ser = None
+        for candidate in port_candidates:
+            try:
+                self.logger.info("Attempting to open serial port %s", candidate)
+                raw_serial = serial.Serial(candidate, baudrate=115200, timeout=3)
+                ser = SerialDebugWrapper(raw_serial, logger=self.logger, name="settings_popup.ser")
+                self.logger.info("Serial port opened on %s", candidate)
+                break
+            except serial.serialutil.SerialException as exc:
+                self.logger.warning("Serial port %s unavailable: %s", candidate, exc)
+            except Exception as exc:
+                self.logger.exception("Unexpected error opening serial port %s", candidate)
+        if ser is None:
+            self.logger.error("Unable to open any serial port from %s", port_candidates)
+            return
 
         sleep(2.5) # wait for a little to initialize serial connection
 
-        ser.write(b'module\n')
-        module = int(ser.readline().decode()) # read in the module number
-        
+        payload = b"module\n"
+        self.logger.debug("Requesting module identifier: %s", summarize_bytes(payload))
+        ser.write(payload)
+        try:
+            module_raw = ser.readline().decode().strip()
+            module = int(module_raw)
+        except Exception:
+            self.logger.exception("Failed to read module identifier from serial")
+            return
+        self.logger.info("Module identifier received: %s", module)
+
         self.master.destroy()
         self.master.quit()
         root = Tk()
@@ -93,11 +123,15 @@ class settings_popup_window:
         elif module == 7:
             app = ESS_GUI_module_7.Module_7(root)
         
+        else:
+            self.logger.error("Unsupported module identifier %s", module)
+            return
         
         root.mainloop()
         
             
     def settings_buttons(self):
+        self.logger.debug("Configuring settings button layout")
         myfont = font.Font(size = 9)
         sticky_to = "nsew"
         frame_padding = 5
@@ -105,7 +139,12 @@ class settings_popup_window:
         #settings_button_frame.place(x = 585, y = 340)
         settings_button_frame.grid(row = 3, column = 2, sticky = sticky_to, padx = 2, pady = 2)
         
-        self.ip_address = str((check_output(['hostname', '-I'])).decode())
+        try:
+            self.ip_address = str((check_output(['hostname', '-I'])).decode())
+        except Exception:
+            self.logger.exception("Failed to obtain hostname -I output")
+            self.ip_address = ""
+        self.logger.debug("Raw IP address output: %s", safe_repr(self.ip_address))
         
         if len(self.ip_address) == 1:
             self.ip_address = "Not Connected to Hotspot"
@@ -630,3 +669,9 @@ class settings_popup_window:
         self.sett_popup = settings_popup_window(self.settings_wind, self.master)
 
     
+log_class_methods(
+    settings_popup_window,
+    exclude={"__init__"},
+    logger_name=f"{__name__}.settings_popup_window",
+    log_result=False,
+)

@@ -1,27 +1,27 @@
 #!/bin/bash
 # Author: Alex Gray | BMO Lab BU
-#Arduino_version=`python3 /home/pi/Documents/version_detect.py`
+#Arduino_version=`python3 /home/pho512/Documents/version_detect.py`
 
 #echo "Arduino Version:"
 #echo $Arduino_version
-PCB_version=`python3 /home/pi/Desktop/BMO_Lab/Gen-4_ESS/GUI/PCB_Version_detect.py`
+PCB_version=`python3 /home/pho512/Desktop/BMO_Lab/Gen-4_ESS/GUI/PCB_Version_detect.py`
 echo "PCB version:"
 echo $PCB_version
 
-cd /home/pi/Desktop/BMO_Lab/Gen-4_ESS
+cd /home/pho512/Desktop/BMO_Lab/Gen-4_ESS
 git reset --hard
 git pull # update the repository
 git fetch # locate all the local and remote branches
 
 # Script that sends the arduino and PCB version then checks out
 # the correct branch
-python3 /home/pi/Desktop/BMO_Lab/Gen-4_ESS/GUI/RPi_git_checkout.py "4.7"
+python3 /home/pho512/Desktop/BMO_Lab/Gen-4_ESS/GUI/RPi_git_checkout.py "4.7"
 
 # get arduino port
 port_number=`ls /dev/ttyUSB*`
 
-arduino --upload /home/pi/Desktop/BMO_Lab/Gen-4_ESS/Arduino/Serial_arduino_RPi_Spec_rev2/Serial_arduino_RPi_Spec_rev2.ino --port $port_number
+arduino --upload /home/pho512/Desktop/BMO_Lab/Gen-4_ESS/Arduino/Serial_arduino_RPi_Spec_rev2/Serial_arduino_RPi_Spec_rev2.ino --port $port_number
 
 pkill -9 -f python3
 
-python3 /home/pi/Desktop/BMO_Lab/Gen-4_ESS/GUI/ESS_main.py
+python3 /home/pho512/Desktop/BMO_Lab/Gen-4_ESS/GUI/ESS_main.py

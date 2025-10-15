@@ -33,12 +33,18 @@ import matplotlib.animation as animation
 from matplotlib import style
 import matplotlib.pyplot as plt
 
+from debug_utils import (
+    configure_logging,
+    get_logger,
+    log_class_methods,
+    safe_repr,
+)
 
 ################ global variables ###########################
-spec_folder_path = '/home/pi/Desktop/Spectrometer'
-spec_folder_settings = '/home/pi/Desktop/Spectrometer/settings'
-settings_file = '/home/pi/Desktop/Spectrometer/settings/settings.csv'
-acquire_file = '/home/pi/Desktop/Spectrometer/settings/acquire_file.csv'
+spec_folder_path = '/home/pho512/Desktop/Spectrometer'
+spec_folder_settings = '/home/pho512/Desktop/Spectrometer/settings'
+settings_file = '/home/pho512/Desktop/Spectrometer/settings/settings.csv'
+acquire_file = '/home/pho512/Desktop/Spectrometer/settings/acquire_file.csv'
 
 
 ####################################################################
@@ -62,6 +68,9 @@ except:
 class Module_6:
     def __init__(self, master):
         global settings_file
+        configure_logging()
+        self.logger = get_logger(f"{__name__}.Module_6")
+        self.logger.debug("Module_6 initialization started with master=%s", safe_repr(master))
         self.root = master
         self.root.title("ESS Module 6 Frame")
         full_screen = False
@@ -115,7 +124,9 @@ class Module_6:
         except:
             pass
         
+        self.logger.debug("Creating functions helper for Module_6")
         self.func = functions(self.root, self.canvas, self.fig)
+        self.logger.debug("functions helper created: %s", self.func)
         
         self.open_new_button = Button(self.root, text = "New Experiment", wraplength = 80, fg = 'black', command = self.func.open_new_experiment, width = button_width, height = button_big_height)
         self.open_new_button.grid(row = 0, column = 0, padx = (0,1), sticky = sticky_to)
@@ -164,7 +175,14 @@ class Module_6:
         
         # check battery percent from arduino
         def battery_percent_check():
-            self.percent = self.func.battery_check()
+            self.logger.debug("battery_percent_check invoked")
+            raw_percent = self.func.battery_check()
+            self.logger.debug("battery_percent_check raw response: %s", raw_percent)
+            try:
+                self.percent = int(raw_percent)
+            except Exception:
+                self.logger.exception("Unable to parse battery percent value: %s", raw_percent)
+                self.percent = 0
             self.charging = False
             # check for charging and then add percent to array for averaging
             if int(self.percent) == 1000:
@@ -175,6 +193,12 @@ class Module_6:
             
             #average battery_array
             self.percent = int(sum(self.battery_array)/(len(self.battery_array)))
+            self.logger.debug(
+                "battery_percent_check processed value: percent=%s charging=%s history=%s",
+                self.percent,
+                self.charging,
+                list(self.battery_array),
+            )
             
             if self.charging:
                 self.battery_label_1.configure(bg = 'green')
@@ -219,12 +243,13 @@ class Module_6:
                     error_top.lift()
                     
                     error_top.after(3000, error_top.destroy)
+                    self.logger.warning("Low battery warning issued at %s%%", self.percent)
 
 
             try:
                 self.root.after(10000, battery_percent_check)
-            except:
-                pass
+            except Exception:
+                self.logger.exception("Failed to schedule battery_percent_check via root.after")
             
         battery_percent_check()
         
@@ -237,5 +262,12 @@ class Module_6:
     def quit_button(self):
         self.root.destroy()
         self.root.quit()
-        
 
+
+log_class_methods(
+    Module_6,
+    exclude={"__init__"},
+    logger_name=f"{__name__}.Module_6",
+    log_result=False,
+)
+        

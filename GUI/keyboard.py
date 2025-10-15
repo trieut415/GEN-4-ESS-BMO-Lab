@@ -3,6 +3,13 @@ import numpy as np
 import os
 import pandas as pd
 
+from debug_utils import (
+    configure_logging,
+    get_logger,
+    log_class_methods,
+    safe_repr,
+)
+
 ################# Global Variables #################################
 exp_folder = []
 save_file = []
@@ -13,6 +20,9 @@ global filename
 
 class key_pad:
     def __init__(self, master):
+        configure_logging()
+        self.logger = get_logger(f"{__name__}.key_pad")
+        self.logger.debug("Initializing key_pad with master=%s", safe_repr(master))
         self.keypad = Toplevel(master)
         self.path = '/Users/Alexander/Desktop/'
         big_font = ('Times New Roman', 24)
@@ -33,10 +43,12 @@ class key_pad:
         keypad_frame.grid_columnconfigure((0), weight = 1)
     
     def create_keypad(self):
+        self.logger.debug("create_keypad invoked")
         global filename
         global foldername
         
         def press(letter):
+            self.logger.debug("Key press: %s", letter)
             global current
             current = self.key.get()
             self.key.set('')
@@ -44,19 +56,22 @@ class key_pad:
             self.key.set(current)
         
         def back():
+            self.logger.debug("Closing keypad without saving")
             self.keypad.destroy()
             
         def key_pad_delete():
             global current
             current = current[:-1] # Remove last digit
             self.key.set(current)
+            self.logger.debug("Deleted last character; current=%s", self.key.get())
         
         def key_pad_save():
             global filename
             global foldername
-            path = '/home/pi/Desktop/Spectrometer/'
+            path = '/home/pho512/Desktop/Spectrometer/'
             filename = str(self.key.get())
             foldername = str(path + self.key.get())
+            self.logger.debug("Saving filename=%s foldername=%s", filename, foldername)
             self.keypad.destroy()
             
         
@@ -138,6 +153,15 @@ class key_pad:
         '''
         # wait until window is destroyed then return the filename
         self.keypad.wait_window()
+        self.logger.debug("Keypad closed with filename=%s foldername=%s", filename, foldername)
         return (filename, foldername)
+
+
+log_class_methods(
+    key_pad,
+    exclude={"__init__"},
+    logger_name=f"{__name__}.key_pad",
+    log_result=False,
+)
         
     

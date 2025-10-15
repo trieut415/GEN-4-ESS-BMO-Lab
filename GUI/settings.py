@@ -1,12 +1,23 @@
 import csv
 import numpy as np 
 
+from debug_utils import (
+    configure_logging,
+    get_logger,
+    log_class_methods,
+    safe_repr,
+)
+
 
 class Settings:
     def __init__(self, settings_file):
+        configure_logging()
+        self.logger = get_logger(f"{__name__}.Settings")
         self.settings_file = settings_file
-        
+        self.logger.debug("Settings helper initialized for file=%s", safe_repr(settings_file))
+
     def create_settings(self):
+        self.logger.debug("Creating settings file at %s", self.settings_file)
         open(self.settings_file, 'x')
         settings_open = open(self.settings_file, 'w', newline = '')
         csv_row = [('Settings', ''),('pulse',1),('pulse_rate',60),\
@@ -29,17 +40,20 @@ class Settings:
             ('pulse_per_measurement_3', 1),('pulse_per_measurement_4', 1),\
             ('pulse_per_measurement_5', 1),('pulse_per_measurement_6', 1),\
             ('pulse_per_measurement_7', 1),('pulse_per_measurement_8', 1),\
-            ('pulse_per_measurement_9', 1),('pulse_per_measurement_10', 1)\
+            ('pulse_per_measurement_9', 1),('pulse_per_measurement_10', 1),\
             ('Buzzer', 1)]   # allocate 10 spaces for burst info
             
         with settings_open:
             csv_writer = csv.writer(settings_open, delimiter = ',')
             csv_writer.writerows(csv_row)
+        self.logger.debug("Default settings written (%s entries)", len(csv_row))
                 
     def settings_read(self):
+        self.logger.debug("Reading settings from %s", self.settings_file)
         settings_open = open(self.settings_file, 'r')
         csv_reader = csv.reader(settings_open, delimiter=',')
         settings = list(csv_reader)
+        self.logger.debug("Loaded %s settings rows", len(settings))
         
         A = float(settings[15][1])
         B1 = float(settings[16][1])
@@ -52,10 +66,21 @@ class Settings:
         wavelength = np.zeros(288)
         for pixel in range(1,289,1):
             wavelength[pixel-1] = A + B1*pixel + B2*(pixel**2) + B3*(pixel**3) + B4*(pixel**4) + B5*(pixel**5)
+        self.logger.debug("Generated wavelength calibration array")
         return (settings, wavelength)
     
     def settings_write(self, settings_array):
+        self.logger.debug("Writing %s rows to settings file %s", len(settings_array), self.settings_file)
         settings_open = open(self.settings_file, 'w')
         with settings_open:
             csv_writer = csv.writer(settings_open, delimiter = ',')
             csv_writer.writerows(settings_array)
+        self.logger.debug("Settings file write completed")
+
+
+log_class_methods(
+    Settings,
+    exclude={"__init__"},
+    logger_name=f"{__name__}.Settings",
+    log_result=False,
+)

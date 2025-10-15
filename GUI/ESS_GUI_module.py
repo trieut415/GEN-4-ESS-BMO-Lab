@@ -34,12 +34,18 @@ import matplotlib.animation as animation
 from matplotlib import style
 import matplotlib.pyplot as plt
 
+from debug_utils import (
+    configure_logging,
+    get_logger,
+    log_class_methods,
+    safe_repr,
+)
 
 ################ global variables ###########################
-spec_folder_path = '/home/pi/Desktop/Spectrometer'
-spec_folder_settings = '/home/pi/Desktop/Spectrometer/settings'
-settings_file = '/home/pi/Desktop/Spectrometer/settings/settings.csv'
-acquire_file = '/home/pi/Desktop/Spectrometer/settings/acquire_file.csv'
+spec_folder_path = '/home/pho512/Desktop/Spectrometer'
+spec_folder_settings = '/home/pho512/Desktop/Spectrometer/settings'
+settings_file = '/home/pho512/Desktop/Spectrometer/settings/settings.csv'
+acquire_file = '/home/pho512/Desktop/Spectrometer/settings/acquire_file.csv'
 
 
 ####################################################################
@@ -63,6 +69,9 @@ except:
 class Main_GUI:
     def __init__(self, master):
         global settings_file
+        configure_logging()
+        self.logger = get_logger(f"{__name__}.Main_GUI")
+        self.logger.debug("Main_GUI initialization started with master=%s", safe_repr(master))
         self.root = master
         self.root.title("ESS System Interface")
         full_screen = False
@@ -78,7 +87,7 @@ class Main_GUI:
         self.root.configure(bg= "sky blue")
         self.root.minsize(800,480) # min size the window can be dragged to
 
-        self.root.tk.call('wm','iconphoto', self.root._w, PhotoImage(file = "/home/pi/Desktop/BMO_Lab/ESS_png"))
+        self.root.tk.call('wm','iconphoto', self.root._w, PhotoImage(file = "/home/pho512/Desktop/BMO_Lab/ESS_png"))
         
         self.open_loop_stop = None # control open Loop button
         
@@ -116,9 +125,11 @@ class Main_GUI:
             settings_func.create_settings()
         except:
             pass
-        
+
         #(self.settings, self.wavelength) = settings_func.settings_read()
+        self.logger.debug("Creating functions helper for Main_GUI")
         self.func = functions(self.root, self.canvas, self.fig)
+        self.logger.debug("functions helper created: %s", self.func)
         
         
         
@@ -222,4 +233,12 @@ class Main_GUI:
                                      relief = SUNKEN, bg = 'gold')
         self.func.open_loop_function()
         self.open_loop_stop = self.root.after(1 , self.open_loop)
+
+
+log_class_methods(
+    Main_GUI,
+    exclude={"__init__"},
+    logger_name=f"{__name__}.Main_GUI",
+    log_result=False,
+)
     

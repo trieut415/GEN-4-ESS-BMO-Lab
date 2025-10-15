@@ -2,9 +2,18 @@ from tkinter import *
 import pandas as pd
 from tkinter import messagebox
 
+from debug_utils import (
+    configure_logging,
+    get_logger,
+    log_class_methods,
+    safe_repr,
+)
+
 class add_remove_popup:
     def __init__(self, master):
-        
+        configure_logging()
+        self.logger = get_logger(f"{__name__}.add_remove_popup")
+        self.logger.debug("Initializing add/remove popup with master=%s", safe_repr(master))
         self.master = master
         self.data_headers = None #handles names of headers for plotting
         self.data_headers_idx = None # handles idx of data_headers for selection
@@ -14,6 +23,7 @@ class add_remove_popup:
         self.data_pd = None
         
     def create_add_remove(self, save_file):
+        self.logger.debug("Creating add/remove dialog for save_file=%s", safe_repr(save_file))
         self.add_remove = Toplevel(self.master)
         self.add_remove.geometry('370x400')
         self.add_remove.title('Select plot(s) to view')
@@ -55,7 +65,12 @@ class add_remove_popup:
                 
         # if there is a save file, then insert scan names
         if self.save_file is not None:
-            self.data_pd = pd.read_csv(self.save_file) #handles gettings spectra names
+            try:
+                self.data_pd = pd.read_csv(self.save_file) #handles gettings spectra names
+                self.logger.debug("Loaded data file with columns: %s", list(self.data_pd.columns.values))
+            except Exception:
+                self.logger.exception("Failed to read data file %s", self.save_file)
+                self.data_pd = None
             
             # get col header names to add to listbox text
             data_headers_dummy = list(self.data_pd.columns.values)
@@ -77,32 +92,39 @@ class add_remove_popup:
                 lb_reference.selection_set(END) # select most recent if none is previous
             
         def save_selected():
-            
+            self.logger.debug("save_selected invoked")
             self.data_headers = [lb.get(idx) for idx in lb.curselection()]
             try:
-                self.ref_ratio = lb_reference.get(lb_reference.curselection()) # get reference selected and save name
+                self.ref_ratio = lb_reference.get(lb_reference.curselection())  # get reference selected and save name
                 self.ref_ratio_idx = lb_reference.curselection()
-                
-            except:
+                self.logger.debug("Reference selected: %s", self.ref_ratio)
+            except Exception:
                 self.ref_ratio_idx = None
                 self.ref_ratio = None
+                self.logger.debug("No reference selected")
             # save selected reference to use for ratio conversion
             #check if the data headers is empty to set to none for future plotting 
             try:
                 if self.data_headers == []:
                     self.data_headers = None
-                    self.data_headers_idx = None 
+                    self.data_headers_idx = None
+                    self.logger.debug("No data headers selected; clearing state")
                 else:
                     self.data_headers_idx = lb.curselection()
-            
+                    self.logger.debug("Data headers selected: %s", self.data_headers)
+
                 self.add_remove.destroy()
-                
-            except:
+
+            except Exception:
+                self.logger.exception("Failed to persist selections; closing dialog")
                 self.add_remove.destroy()
-            
+
         def select_all():
+            self.logger.debug("Selecting all data entries")
             lb.select_set(0, END)
+
         def unselect_all():
+            self.logger.debug("Clearing all selections")
             lb.select_clear(0, END)
 
         #create selection buttons
@@ -112,4 +134,12 @@ class add_remove_popup:
         select_all_button.grid(row = 2, column = 0, columnspan = 4, sticky= 'nsew')
         Unselect_all_button = Button(select_frame, text = 'Un-Select_all',height = 3,  command = unselect_all)
         Unselect_all_button.grid(row = 3, column = 0, columnspan = 4, sticky= 'nsew')
+
+
+log_class_methods(
+    add_remove_popup,
+    exclude={"__init__"},
+    logger_name=f"{__name__}.add_remove_popup",
+    log_result=False,
+)
         

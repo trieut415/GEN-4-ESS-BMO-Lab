@@ -29,9 +29,9 @@ global settings_file
 global acquire_file
 global path
 
-settings_file = '/home/pi/Desktop/Spectrometer/settings/settings.csv'
-acquire_file = '/home/pi/Desktop/Spectrometer/settings/acquire_file.csv'
-path = '/home/pi/Desktop/Spectrometer/'
+settings_file = '/home/pho512/Desktop/Spectrometer/settings/settings.csv'
+acquire_file = '/home/pho512/Desktop/Spectrometer/settings/acquire_file.csv'
+path = '/home/pho512/Desktop/Spectrometer/'
 #################################################################
 
 
@@ -45,7 +45,7 @@ class functions:
         self.scan_file = None #initialize Scan File for saving scan data
         self.scan_number = 1 # ID for saving to csv
         self.reference_number = 1 # ref ID for saving to csv
-        self.exp_folder = '/home/pi/Desktop/Spectrometer' # experiment folder used for saving
+        self.exp_folder = '/home/pho512/Desktop/Spectrometer' # experiment folder used for saving
         self.df = None # data frame array used for storing and plotting data
         self.df_scan = None
         self.serial_check = False #variable for flagging serial connection
@@ -657,7 +657,7 @@ class functions:
             
     def OpenFile(self):
         scan_message = None    
-        save_file = askopenfilename(initialdir="/home/pi/Desktop/Spectrometer",
+        save_file = askopenfilename(initialdir="/home/pho512/Desktop/Spectrometer",
                                     filetypes =(("csv file", "*.csv"),("All Files","*.*")),
                                     title = "Choose a file.")
         #try:

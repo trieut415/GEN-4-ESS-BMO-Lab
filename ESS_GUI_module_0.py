@@ -5,6 +5,7 @@ from tkinter import messagebox
 import threading
 import tkinter.font as tkFont
 import random
+import logging
 
 #import all dependancies
 from settings import Settings as _Settings
@@ -40,10 +41,10 @@ import matplotlib.pyplot as plt
 
 
 ################ global variables ###########################
-spec_folder_path = '/home/pi/Desktop/Spectrometer'
-spec_folder_settings = '/home/pi/Desktop/Spectrometer/settings'
-settings_file = '/home/pi/Desktop/Spectrometer/settings/settings.csv'
-acquire_file = '/home/pi/Desktop/Spectrometer/settings/acquire_file.csv'
+spec_folder_path = '/home/pho512/Desktop/Spectrometer'
+spec_folder_settings = '/home/pho512/Desktop/Spectrometer/settings'
+settings_file = '/home/pho512/Desktop/Spectrometer/settings/settings.csv'
+acquire_file = '/home/pho512/Desktop/Spectrometer/settings/acquire_file.csv'
 
 
 ####################################################################
@@ -64,9 +65,136 @@ except:
     open_acquire_file = open(acquire_file, 'a')
 # open up a serial to allow for reading in of module attachment
 
+def _summarize_bytes(data, limit=64):
+    if data is None:
+        return "None"
+    if not isinstance(data, (bytes, bytearray)):
+        return repr(data)
+    display = data[:limit]
+    hex_sample = " ".join(f"{byte:02X}" for byte in display)
+    ascii_sample = "".join(chr(byte) if 32 <= byte <= 126 else "." for byte in display)
+    remainder = len(data) - len(display)
+    suffix = "" if remainder <= 0 else f" ... (+{remainder} bytes)"
+    return f"{len(data)} bytes | hex: {hex_sample} | ascii: {ascii_sample}{suffix}"
+
+
+class SerialDebugWrapper:
+    def __init__(self, serial_obj, logger=None, name="serial"):
+        object.__setattr__(self, "_ser", serial_obj)
+        object.__setattr__(self, "_logger", logger or logging.getLogger(__name__))
+        object.__setattr__(self, "_name", name)
+
+    def _serial_id(self):
+        port = getattr(self._ser, "port", "unknown")
+        baud = getattr(self._ser, "baudrate", "unknown")
+        return f"{self._name}@{port} (baud {baud})"
+
+    def write(self, data):
+        self._logger.debug("%s.write request: %s", self._serial_id(), _summarize_bytes(data))
+        try:
+            written = self._ser.write(data)
+        except Exception:
+            self._logger.exception("%s.write failed", self._serial_id())
+            raise
+        self._logger.debug("%s.write completed: %s bytes written", self._serial_id(), written)
+        return written
+
+    def read(self, size=1):
+        in_waiting = None
+        try:
+            in_waiting = getattr(self._ser, "in_waiting", None)
+        except Exception:
+            pass
+        self._logger.debug("%s.read request: size=%s, in_waiting=%s", self._serial_id(), size, in_waiting)
+        start_time = time.time()
+        try:
+            data = self._ser.read(size)
+        except Exception:
+            self._logger.exception("%s.read failed", self._serial_id())
+            raise
+        duration = time.time() - start_time
+        self._logger.debug("%s.read response (%0.3fs): %s", self._serial_id(), duration, _summarize_bytes(data))
+        return data
+
+    def readline(self, *args, **kwargs):
+        self._logger.debug("%s.readline request", self._serial_id())
+        start_time = time.time()
+        try:
+            data = self._ser.readline(*args, **kwargs)
+        except Exception:
+            self._logger.exception("%s.readline failed", self._serial_id())
+            raise
+        duration = time.time() - start_time
+        self._logger.debug("%s.readline response (%0.3fs): %s", self._serial_id(), duration, _summarize_bytes(data))
+        return data
+
+    def read_until(self, *args, **kwargs):
+        self._logger.debug("%s.read_until request", self._serial_id())
+        start_time = time.time()
+        try:
+            data = self._ser.read_until(*args, **kwargs)
+        except Exception:
+            self._logger.exception("%s.read_until failed", self._serial_id())
+            raise
+        duration = time.time() - start_time
+        self._logger.debug("%s.read_until response (%0.3fs): %s", self._serial_id(), duration, _summarize_bytes(data))
+        return data
+
+    def reset_input_buffer(self):
+        self._logger.debug("%s.reset_input_buffer()", self._serial_id())
+        return self._ser.reset_input_buffer()
+
+    def reset_output_buffer(self):
+        self._logger.debug("%s.reset_output_buffer()", self._serial_id())
+        return self._ser.reset_output_buffer()
+
+    def flush(self):
+        self._logger.debug("%s.flush()", self._serial_id())
+        return self._ser.flush()
+
+    def close(self):
+        self._logger.debug("%s.close()", self._serial_id())
+        return self._ser.close()
+
+    def __getattr__(self, item):
+        return getattr(self._ser, item)
+
+    def __setattr__(self, key, value):
+        if key in {"_ser", "_logger", "_name"}:
+            object.__setattr__(self, key, value)
+        else:
+            setattr(self._ser, key, value)
+
+    def __delattr__(self, item):
+        if item in {"_ser", "_logger", "_name"}:
+            object.__delattr__(self, item)
+        else:
+            delattr(self._ser, item)
+
+    def __dir__(self):
+        return sorted(set(dir(self.__class__)) | set(self.__dict__.keys()) | set(dir(self._ser)))
+
+    def __repr__(self):
+        return f"<SerialDebugWrapper for {self._serial_id()}>"
+
+
 class Module_0:
     def __init__(self, master):
         global settings_file
+        log_level_name = os.getenv("ESS_SERIAL_DEBUG_LEVEL", "DEBUG").upper()
+        log_level = getattr(logging, log_level_name, logging.DEBUG)
+        root_logger = logging.getLogger()
+        if not root_logger.handlers:
+            logging.basicConfig(level=log_level,
+                                format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+        if root_logger.level == logging.NOTSET or root_logger.level > log_level:
+            root_logger.setLevel(log_level)
+        self.logger = logging.getLogger(f"{__name__}.Module_0")
+        self.logger.setLevel(log_level)
+        self.logger.debug("Module_0 initialization started with log level %s",
+                          logging.getLevelName(log_level))
+        self._raw_serial_handle = None
+        self._serial_debug_wrapper = None
         self.root = master
         self.root.title("ESS System Interface")
         self.screen_handler = True
@@ -130,11 +258,15 @@ class Module_0:
         
         try:
             settings_func.create_settings()
-        except:
-            pass
+        except Exception:
+            self.logger.exception("settings_func.create_settings() raised an exception")
         
         #(self.settings, self.wavelength) = settings_func.settings_read()
+        self.logger.debug("Instantiating functions helper")
         self.func = functions(self.root, self.canvas, self.fig)
+        self.logger.debug("functions helper instantiated: %s", self.func)
+        self._wrap_serial_for_debugging()
+        self._log_serial_state("post functions init")
         self.calibration_win = calibration_window(self.root)
         #self.func.home()
         
@@ -242,22 +374,34 @@ class Module_0:
         
         # check battery percent from arduino
         def battery_percent_check():
-            self.percent = self.func.battery_check()
+            self.logger.debug("battery_percent_check triggered")
+            raw_percent = self.func.battery_check()
+            self.logger.debug("battery_percent_check raw response: %s", raw_percent)
+            self._log_serial_state("battery_percent_check.post-read")
             self.charging = False
-            # check for charging and then add percent to array for averaging
-            if int(self.percent) == 1000:
+            try:
+                percent_int = int(raw_percent)
+            except Exception:
+                self.logger.exception("Unable to convert battery percent '%s' to int", raw_percent)
+                percent_int = 0
+            if percent_int == 1000:
                 self.charging = True
-            self.battery_array.append(int(self.percent))
+            self.battery_array.append(percent_int)
             
             if len(self.battery_array) > 10:
                 del self.battery_array[0]
                 
             #average battery_array
-            self.percent = int(sum(self.battery_array)/(len(self.battery_array)))
+            if self.battery_array:
+                self.percent = int(sum(self.battery_array)/(len(self.battery_array)))
+            else:
+                self.percent = percent_int
             if  self.percent >100:
                 self.percent = 100
             elif self.percent < 0:
                 self.percent = 1
+            self.logger.debug("battery_percent_check processed: averaged=%s charging=%s history=%s",
+                              self.percent, self.charging, list(self.battery_array))
             if self.charging:
                 self.battery_label_1.configure(bg = 'green')
                 self.battery_label_2.configure(font = battery_font, text = "Charging", bg = 'green')
@@ -305,48 +449,135 @@ class Module_0:
 
             try:
                 self.root.after(10000, battery_percent_check)
-            except:
-                pass
+            except Exception:
+                self.logger.exception("Failed to schedule battery_percent_check via root.after")
             
         battery_percent_check()
 
     def check_scan_number(self):
+        self.logger.debug("check_scan_number invoked (save=True)")
+        self._log_serial_state("check_scan_number.before")
         message = self.func.acquire(save = True)
+        self.logger.debug("check_scan_number response: %s", message)
+        self._log_serial_state("check_scan_number.after")
         print(message)
         self.scan_label.config(text = message)
     
     def check_ref_number(self):
+        self.logger.debug("check_ref_number invoked")
+        self._log_serial_state("check_ref_number.before")
         message = self.func.save_reference()
+        self.logger.debug("check_ref_number response: %s", message)
+        self._log_serial_state("check_ref_number.after")
         self.scan_label.config(text = message)
     
     def check_spectra(self):
+        self.logger.debug("check_spectra invoked")
+        self._log_serial_state("check_spectra.before")
         message = self.func.save_spectra()
+        self.logger.debug("check_spectra response: %s", message)
+        self._log_serial_state("check_spectra.after")
         self.scan_label.config(text = message)
         
     def check_seq_number(self):
+        self.logger.debug("check_seq_number invoked (save=True)")
+        self._log_serial_state("check_seq_number.before")
         message = self.func.sequence(save=True)
+        self.logger.debug("check_seq_number response: %s", message)
+        self._log_serial_state("check_seq_number.after")
         self.scan_label.config(text = message)
                        
     def check_scan_number_open_file(self):
+        self.logger.debug("check_scan_number_open_file invoked")
+        self._log_serial_state("check_scan_number_open_file.before")
         message = self.func.OpenFile()
+        self.logger.debug("check_scan_number_open_file response: %s", message)
+        self._log_serial_state("check_scan_number_open_file.after")
         self.scan_label.config(text = message)
                        
     def check_seq_foot(self, event):
+        self.logger.debug("check_seq_foot invoked via event: %s", event)
+        self._log_serial_state("check_seq_foot.before")
         message = self.func.sequence(save=True)
+        self.logger.debug("check_seq_foot response: %s", message)
+        self._log_serial_state("check_seq_foot.after")
         self.scan_label.config(text = message)
                        
    # allows for popup of settings window
     def window_popup(self, master):
+        self.logger.debug("Opening settings popup window")
         self.popup_window = Toplevel(master)
         self.sett_popup = settings_window.settings_popup_window(self.popup_window, master)
         self.popup_window.wait_window()
-        self.func.set_lamp_voltage()
-        self.func.ser.write(b"read\n")
-        blahdata = self.func.ser.read(576)
-        
+        self.logger.debug("Settings popup closed; applying lamp voltage adjustments")
+        self._log_serial_state("window_popup.before set_lamp_voltage")
+        try:
+            self.func.set_lamp_voltage()
+        except Exception:
+            self.logger.exception("self.func.set_lamp_voltage() raised an exception")
+            raise
+        self._log_serial_state("window_popup.after set_lamp_voltage")
+        command = b"read\n"
+        self.logger.debug("Sending serial command from window_popup: %s", _summarize_bytes(command))
+        try:
+            self.func.ser.write(command)
+        except Exception:
+            self.logger.exception("Serial write failed during window_popup")
+            raise
+        self._log_serial_state("window_popup.after write")
+        try:
+            blahdata = self.func.ser.read(576)
+        except Exception:
+            self.logger.exception("Serial read failed during window_popup")
+            raise
+        self.logger.debug("Serial read result in window_popup: %s", _summarize_bytes(blahdata))
+        self._log_serial_state("window_popup.after read")
+
     #open calibration window
     def open_cal_window(self, event):
         self.calibration_win.create_window()
+
+    def _wrap_serial_for_debugging(self):
+        if not hasattr(self, "func"):
+            self.logger.debug("_wrap_serial_for_debugging called before functions helper was created")
+            return
+        ser = getattr(self.func, "ser", None)
+        if ser is None:
+            self.logger.warning("functions helper does not expose 'ser'; serial debugging disabled")
+            return
+        if isinstance(ser, SerialDebugWrapper):
+            self.logger.debug("Serial port already wrapped for debugging")
+            self._serial_debug_wrapper = ser
+            return
+        self._raw_serial_handle = ser
+        wrapper = SerialDebugWrapper(ser, logger=self.logger, name="functions.ser")
+        self.func.ser = wrapper
+        self._serial_debug_wrapper = wrapper
+        port = getattr(wrapper, "port", "unknown")
+        baud = getattr(wrapper, "baudrate", "unknown")
+        self.logger.info("Serial debug wrapper attached to port=%s baud=%s", port, baud)
+        self._log_serial_state("wrap_serial.after")
+
+    def _log_serial_state(self, context):
+        if not hasattr(self, "func"):
+            self.logger.debug("Serial state [%s]: functions helper not ready", context)
+            return
+        ser = getattr(self.func, "ser", None)
+        if ser is None:
+            self.logger.debug("Serial state [%s]: no serial handle available", context)
+            return
+        details = {}
+        for attr in ("port", "is_open", "baudrate", "timeout", "write_timeout"):
+            try:
+                details[attr] = getattr(ser, attr)
+            except Exception as exc:
+                details[attr] = f"error: {exc}"
+        for attr in ("in_waiting", "out_waiting"):
+            try:
+                details[attr] = getattr(ser, attr)
+            except Exception as exc:
+                details[attr] = f"error: {exc}"
+        self.logger.debug("Serial state [%s]: %s", context, details)
 
     # send values to change visualization of data in functions class
     def autoscale_toggle(self):
@@ -391,6 +622,7 @@ class Module_0:
             self.root.after_cancel(self.open_loop_stop)
     
     def open_loop(self):
+        self.logger.debug("open_loop triggered")
         self.settings_button.config(state = DISABLED)
         self.acquire_button.config(state = DISABLED)
         self.acquire_save_button.config(state = DISABLED)
@@ -409,7 +641,9 @@ class Module_0:
         
         self.open_loop_button.config(command = self.open_loop_state,
                                      relief = SUNKEN, bg = 'gold')
+        self._log_serial_state("open_loop.before")
         self.func.open_loop_function()
+        self._log_serial_state("open_loop.after")
         self.open_loop_stop = self.root.after(1 , self.open_loop)
     
     def quit_button(self):
