@@ -41,10 +41,10 @@ from debug_utils import (
 )
 
 ################ global variables ###########################
-spec_folder_path = '/home/pi/Desktop/Spectrometer'
-spec_folder_settings = '/home/pi/Desktop/Spectrometer/settings'
-settings_file = '/home/pi/Desktop/Spectrometer/settings/settings.csv'
-acquire_file = '/home/pi/Desktop/Spectrometer/settings/acquire_file.csv'
+spec_folder_path = '/home/pho512/Desktop/Spectrometer'
+spec_folder_settings = '/home/pho512/Desktop/Spectrometer/settings'
+settings_file = '/home/pho512/Desktop/Spectrometer/settings/settings.csv'
+acquire_file = '/home/pho512/Desktop/Spectrometer/settings/acquire_file.csv'
 
 
 ####################################################################
